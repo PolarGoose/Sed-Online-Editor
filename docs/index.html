@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet"
+        href="https://pvinis.github.io/iosevka-webfont/7.0.2/iosevka.css">
+  <link rel="icon"
+        href="data:,">
+  <title>Sed online editor. Version: </title>
+  <style>
+  </style>
+</head>
+<body style="font-family: sans-serif;">
+<div style="display: grid;
+            grid-template-rows: auto auto auto 1fr;
+            height: 98vh;
+            font-size: 18px">
+  <div style="display: grid;
+              grid-template-columns: auto auto auto auto auto auto auto auto auto auto auto auto auto auto 1fr;">
+    <label>
+      Font size:
+      <select class="select"
+              id="font-size-select"
+              onchange="setFontSize(this.value)"
+              style="font-size: 18px">
+        <option>8</option>
+        <option>9</option>
+        <option>10</option>
+        <option>11</option>
+        <option>12</option>
+        <option>13</option>
+        <option selected>14</option>
+        <option>15</option>
+        <option>16</option>
+        <option>17</option>
+        <option>18</option>
+        <option>19</option>
+        <option>20</option>
+        <option>21</option>
+        <option>22</option>
+        <option>23</option>
+        <option>24</option>
+      </select>
+    </label>
+
+    <div style="border-left: 2px solid black;
+                margin-left: 5px"></div>
+
+    <label style="padding-left: 10px">Command line options:</label>
+    <div style="border-left: 2px dotted black;
+                margin-left: 5px"></div>
+    <input type="checkbox"
+           id="sed-posix-option-checkbox">--posix</input>
+    <div style="border-left: 2px  dotted black;
+                margin-left: 5px"></div>
+    <input type="checkbox"
+           id="sed-regexp-extended-option-checkbox">--regexp-extended</input>
+    <div style="border-left: 2px dotted black;
+                margin-left: 5px"></div>
+    <input type="checkbox"
+           id="sed-debug-option-checkbox">--debug</input>
+    <div style="border-left: 2px solid black;
+                margin-left: 5px"></div>
+    <button style="margin-left: 5px;
+                   font-size: 18px"
+            onclick="runSed()"
+            id="run-sed-button">Run sed</button>
+  </div>
+
+  <hr style="width: 100%;
+             border: 1px solid #ccc;">
+
+  <div style="display: grid;
+              grid-template-columns: auto auto auto;
+              align-items: center;
+              justify-items: center;">
+    <label>Sed script</label>
+    <label>Test input</label>
+    <label>Output</label>
+  </div>
+  <div style="display: grid;
+              grid-template-columns: auto auto auto;
+              gap: 0.5em;">
+    <div id="sed-script-editor"># Replace all occurrences of "foo" with "bar"
+s/foo/bar/g
+
+# Replace the word "cat" with "dog"
+s/\bcat\b/dog/g</div>
+    <div id="test-input-editor">This is a foo line.
+Another line with cat and foo.
+Some more foo words here.
+A line with no matches.</div>
+    <div id="output-editor"
+         style="background: whitesmoke"></div>
+  </div>
+</div>
+</body>
+
+<!-- 3rd party libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.36.4/ace.min.js"></script>
+
+<script>
+  const fontSizeSelect = document.getElementById("font-size-select")
+
+  const sedScriptEditor = ace.edit("sed-script-editor")
+  sedScriptEditor.setOptions({
+    fontFamily: "Iosevka Web",
+    showPrintMargin: false
+  })
+
+  const testInputEditor = ace.edit("test-input-editor")
+  testInputEditor.setOptions({
+    fontFamily: "Iosevka Web",
+    showPrintMargin: false,
+  })
+
+  const outputEditor = ace.edit("output-editor")
+  outputEditor.setOptions({
+    fontFamily: "Iosevka Web",
+    showPrintMargin: false,
+    readOnly: true
+  })
+
+  setFontSize(fontSizeSelect.options[fontSizeSelect.selectedIndex].text)
+
+  function setFontSize(fontSize) {
+    sedScriptEditor.setFontSize(`${fontSize}px`)
+    testInputEditor.setFontSize(`${fontSize}px`)
+    outputEditor.setFontSize(`${fontSize}px`)
+  }
+</script>
+<script type="module">
+  import SedModule from "./gen/sed.js"
+  import sedVersion from "./gen/sedVersion.js"
+
+  document.title += sedVersion
+
+  const runSedButton = document.getElementById("run-sed-button")
+
+  window.runSed = function () {
+    const sedPosixOptionCheckbox = document.getElementById("sed-posix-option-checkbox")
+    const sedRegexpExtendedOptionCheckbox = document.getElementById("sed-regexp-extended-option-checkbox")
+    const sedDebugOptionCheckbox = document.getElementById("sed-debug-option-checkbox")
+
+    let sedCommandLineArguments = ""
+    if(sedPosixOptionCheckbox.checked) {
+      sedCommandLineArguments += "--posix "
+    }
+    if(sedRegexpExtendedOptionCheckbox.checked) {
+      sedCommandLineArguments += "--regexp-extended "
+    }
+    if(sedDebugOptionCheckbox.checked) {
+      sedCommandLineArguments += "--debug "
+    }
+    sedCommandLineArguments += `--file=/sedScript.txt /testInput.txt`
+
+    let sedStdOut = ""
+    let sedStdErr = ""
+
+    runSedButton.disabled = true
+
+    SedModule({
+      print: (text) => {
+        sedStdOut += text + "\n"
+      },
+      printErr: (text) => {
+        sedStdErr += text + "\n"
+      }
+    }).then((sedModule) => {
+      try {
+        const sedScript = sedScriptEditor.getValue()
+        sedModule.FS.writeFile('/sedScript.txt', sedScript)
+
+        const testInput = testInputEditor.getValue()
+        sedModule.FS.writeFile('/testInput.txt', testInput)
+
+        const res = sedModule.callMain(sedCommandLineArguments.split(" ").filter(i => i))
+
+        if (res === 0) {
+          outputEditor.session.setValue(sedStdOut)
+        } else {
+          const errorMessage = `Failed to run sed command:\n  sed.exe ${sedCommandLineArguments}\nError code: ${res}\nError output:\n${sedStdErr}`
+          outputEditor.session.setValue(errorMessage)
+        }
+      } finally {
+        runSedButton.disabled = false
+      }
+    })
+  }
+</script>
+</html>
